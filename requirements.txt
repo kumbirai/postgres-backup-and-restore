@@ -1,0 +1,4 @@
+python-dotenv==1.0.0
+psycopg2-binary==2.9.9
+click==8.1.7
+rich==13.7.0 
