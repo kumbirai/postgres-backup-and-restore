@@ -15,20 +15,23 @@ def cli():
 
 @cli.command()
 @click.option('--schemas', '-s', multiple=True, help='Specific schemas to backup')
-def backup(schemas):
+@click.option('--tables', '-t', multiple=True, help='Specific tables to backup (format: schema.table)')
+def backup(schemas, tables):
     """Create a database backup"""
     db_ops = DatabaseOperations()
     schemas_list = list(schemas) if schemas else None
+    tables_list = list(tables) if tables else None
     
     console.print(Panel.fit(
         f"Starting backup operation\n"
         f"Database: {db_ops.config.DB_NAME}\n"
         f"Host: {db_ops.config.DB_HOST}\n"
-        f"Schemas: {', '.join(schemas_list) if schemas_list else 'All'}",
+        f"Schemas: {', '.join(schemas_list) if schemas_list else 'All'}\n"
+        f"Tables: {', '.join(tables_list) if tables_list else 'All'}",
         title="Backup Information"
     ))
     
-    if db_ops.backup(schemas=schemas_list):
+    if db_ops.backup(schemas=schemas_list, tables=tables_list):
         console.print("[green]Backup completed successfully![/green]")
     else:
         console.print("[red]Backup failed![/red]")
@@ -37,21 +40,24 @@ def backup(schemas):
 @cli.command()
 @click.argument('backup_file', type=click.Path(exists=True))
 @click.option('--schemas', '-s', multiple=True, help='Specific schemas to restore')
-def restore(backup_file, schemas):
+@click.option('--tables', '-t', multiple=True, help='Specific tables to restore (format: schema.table)')
+def restore(backup_file, schemas, tables):
     """Restore database from backup"""
     db_ops = DatabaseOperations()
     schemas_list = list(schemas) if schemas else None
+    tables_list = list(tables) if tables else None
     
     console.print(Panel.fit(
         f"Starting restore operation\n"
         f"Database: {db_ops.config.DB_NAME}\n"
         f"Host: {db_ops.config.DB_HOST}\n"
         f"Backup file: {backup_file}\n"
-        f"Schemas: {', '.join(schemas_list) if schemas_list else 'All'}",
+        f"Schemas: {', '.join(schemas_list) if schemas_list else 'All'}\n"
+        f"Tables: {', '.join(tables_list) if tables_list else 'All'}",
         title="Restore Information"
     ))
     
-    if db_ops.restore(backup_file, schemas=schemas_list):
+    if db_ops.restore(backup_file, schemas=schemas_list, tables=tables_list):
         console.print("[green]Restore completed successfully![/green]")
     else:
         console.print("[red]Restore failed![/red]")

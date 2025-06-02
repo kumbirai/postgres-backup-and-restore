@@ -27,4 +27,4 @@ build/
 /logs/
 
 # Postgres backups
-/postgres_backups/
+/backups/

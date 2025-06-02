@@ -134,7 +134,7 @@ class DatabaseOperations:
             logger.error(f"Backup file verification failed: {str(e)}")
             return False
 
-    def backup(self, schemas: Optional[List[str]] = None) -> bool:
+    def backup(self, schemas: Optional[List[str]] = None, tables: Optional[List[str]] = None) -> bool:
         """Create a database backup."""
         if not self._check_version_compatibility():
             return False
@@ -156,6 +156,11 @@ class DatabaseOperations:
         if schemas:
             for schema in schemas:
                 cmd.extend(["-n", schema])
+
+        # Add table filter if specified
+        if tables:
+            for table in tables:
+                cmd.extend(["-t", table])
 
         try:
             # Set PGPASSWORD environment variable
@@ -197,7 +202,7 @@ class DatabaseOperations:
             logger.error(f"Backup failed: {str(e)}")
             return False
 
-    def restore(self, backup_file: str, schemas: Optional[List[str]] = None) -> bool:
+    def restore(self, backup_file: str, schemas: Optional[List[str]] = None, tables: Optional[List[str]] = None) -> bool:
         """Restore database from backup."""
         if not self._check_version_compatibility():
             return False
@@ -221,6 +226,11 @@ class DatabaseOperations:
         if schemas:
             for schema in schemas:
                 cmd.extend(["-n", schema])
+
+        # Add table filter if specified
+        if tables:
+            for table in tables:
+                cmd.extend(["-t", table])
 
         try:
             # Set PGPASSWORD environment variable

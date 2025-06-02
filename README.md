@@ -1,12 +1,13 @@
 # PostgreSQL Backup and Restore Tool
 
-A Python-based command-line tool for backing up and restoring PostgreSQL databases with support for schema-specific operations and compression.
+A Python-based command-line tool for backing up and restoring PostgreSQL databases with support for schema-specific and table-specific operations and compression.
 
 ## Features
 
 - Create compressed database backups
 - Restore from backup files
 - Support for schema-specific backup and restore
+- Support for table-specific backup and restore
 - Configurable through environment variables
 - Rich logging and error handling
 - Backup integrity verification
@@ -64,6 +65,16 @@ To backup specific schemas:
 python -m src.main backup --schemas public --schemas custom_schema
 ```
 
+To backup specific tables:
+```bash
+python -m src.main backup --tables public.users --tables public.orders
+```
+
+To backup specific schemas and tables:
+```bash
+python -m src.main backup --schemas public --tables public.users --tables custom_schema.products
+```
+
 ### Restoring from Backup
 
 To restore the entire database:
@@ -74,6 +85,16 @@ python -m src.main restore /path/to/backup_file.sql.gz
 To restore specific schemas:
 ```bash
 python -m src.main restore /path/to/backup_file.sql.gz --schemas public --schemas custom_schema
+```
+
+To restore specific tables:
+```bash
+python -m src.main restore /path/to/backup_file.sql.gz --tables public.users --tables public.orders
+```
+
+To restore specific schemas and tables:
+```bash
+python -m src.main restore /path/to/backup_file.sql.gz --schemas public --tables public.users --tables custom_schema.products
 ```
 
 ## Project Structure
@@ -102,6 +123,7 @@ The tool includes comprehensive error handling and logging:
 - File integrity verification
 - Database connection issues
 - Invalid schema names
+- Invalid table names
 
 ## License
 
