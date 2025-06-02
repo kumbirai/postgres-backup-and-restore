@@ -249,7 +249,7 @@ class DatabaseOperations:
                 )
             
             if process.returncode != 0:
-                logger.error(f"Restore failed: {process.stderr}")
+                logger.error(f"Restore failed: {process.stderr.decode()}")
                 return False
             
             logger.info("Restore completed successfully")
@@ -258,3 +258,185 @@ class DatabaseOperations:
         except Exception as e:
             logger.error(f"Restore failed: {str(e)}")
             return False
+
+    def get_all_tables(self) -> List[str]:
+        """Get all tables in the database.
+        
+        Returns:
+            List[str]: List of tables in format 'schema.table'
+        """
+        try:
+            cmd = [
+                self._get_command_path("psql"),
+                "-h", self.config.DB_HOST,
+                "-p", self.config.DB_PORT,
+                "-U", self.config.DB_USER,
+                "-d", self.config.DB_NAME,
+                "-t",
+                "-c", """
+                    SELECT schemaname || '.' || tablename
+                    FROM pg_tables
+                    WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+                    ORDER BY schemaname, tablename;
+                """
+            ]
+            
+            env = os.environ.copy()
+            env["PGPASSWORD"] = self.config.DB_PASSWORD
+            
+            result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                logger.error(f"Failed to get tables: {result.stderr}")
+                return []
+            
+            # Split output into lines and remove empty lines
+            tables = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+            return tables
+            
+        except Exception as e:
+            logger.error(f"Error getting tables: {str(e)}")
+            return []
+
+    def export_to_csv(self, tables: Optional[List[str]] = None, output_dir: Optional[str] = None) -> bool:
+        """Export specified tables to CSV files.
+        
+        Args:
+            tables: List of tables to export in format 'schema.table'. If None, exports all tables.
+            output_dir: Optional directory to save CSV files. Defaults to backup directory.
+        
+        Returns:
+            bool: True if export was successful, False otherwise
+        """
+        if not output_dir:
+            output_dir = self.config.BACKUP_DIR
+        
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        # If no tables specified, get all tables
+        if not tables:
+            tables = self.get_all_tables()
+            if not tables:
+                logger.error("No tables found to export")
+                return False
+            logger.info(f"Found {len(tables)} tables to export")
+        
+        success = True
+        for table in tables:
+            try:
+                # Split schema and table name
+                schema, table_name = table.split('.')
+                output_file = output_path / f"{schema}.{table_name}.csv"
+                
+                # Build COPY command
+                cmd = [
+                    self._get_command_path("psql"),
+                    "-h", self.config.DB_HOST,
+                    "-p", self.config.DB_PORT,
+                    "-U", self.config.DB_USER,
+                    "-d", self.config.DB_NAME,
+                    "-c", f"\\COPY {schema}.{table_name} TO '{output_file}' WITH CSV HEADER"
+                ]
+                
+                # Set PGPASSWORD environment variable
+                env = os.environ.copy()
+                env["PGPASSWORD"] = self.config.DB_PASSWORD
+                
+                logger.info(f"Exporting {table} to {output_file}")
+                process = subprocess.run(cmd, env=env, capture_output=True, text=True)
+                
+                if process.returncode != 0:
+                    logger.error(f"Failed to export {table}: {process.stderr}")
+                    success = False
+                    continue
+                
+                logger.info(f"Successfully exported {table} to {output_file}")
+                
+            except Exception as e:
+                logger.error(f"Error exporting {table}: {str(e)}")
+                success = False
+        
+        return success
+
+    def import_from_csv(self, csv_files: Optional[List[str]] = None, input_dir: Optional[str] = None, truncate: bool = False) -> bool:
+        """Import data from CSV files into corresponding tables.
+        
+        Args:
+            csv_files: List of CSV file paths to import. If None, imports all CSV files from input_dir.
+            input_dir: Directory containing CSV files to import. Required if csv_files is None.
+            truncate: If True, truncate tables before importing
+        
+        Returns:
+            bool: True if import was successful, False otherwise
+        """
+        if not csv_files and not input_dir:
+            logger.error("Either csv_files or input_dir must be specified")
+            return False
+            
+        if not csv_files:
+            input_path = Path(input_dir)
+            if not input_path.exists():
+                logger.error(f"Input directory not found: {input_dir}")
+                return False
+            csv_files = [str(f) for f in input_path.glob("*.csv")]
+            if not csv_files:
+                logger.error(f"No CSV files found in {input_dir}")
+                return False
+            logger.info(f"Found {len(csv_files)} CSV files to import")
+        
+        success = True
+        for csv_file in csv_files:
+            try:
+                file_path = Path(csv_file)
+                if not file_path.exists():
+                    logger.error(f"CSV file not found: {csv_file}")
+                    success = False
+                    continue
+                
+                # Extract schema and table name from filename (format: schema.table.csv)
+                schema, table_name = file_path.stem.split('.')
+                
+                # Build COPY command
+                cmd = [
+                    self._get_command_path("psql"),
+                    "-h", self.config.DB_HOST,
+                    "-p", self.config.DB_PORT,
+                    "-U", self.config.DB_USER,
+                    "-d", self.config.DB_NAME
+                ]
+                
+                # Set PGPASSWORD environment variable
+                env = os.environ.copy()
+                env["PGPASSWORD"] = self.config.DB_PASSWORD
+                
+                # Truncate table if requested
+                if truncate:
+                    truncate_cmd = cmd.copy()
+                    truncate_cmd.extend(["-c", f"TRUNCATE TABLE {schema}.{table_name}"])
+                    logger.info(f"Truncating table {schema}.{table_name}")
+                    truncate_process = subprocess.run(truncate_cmd, env=env, capture_output=True, text=True)
+                    if truncate_process.returncode != 0:
+                        logger.error(f"Failed to truncate {schema}.{table_name}: {truncate_process.stderr}")
+                        success = False
+                        continue
+                
+                # Import data
+                import_cmd = cmd.copy()
+                import_cmd.extend(["-c", f"\\COPY {schema}.{table_name} FROM '{file_path}' WITH CSV HEADER"])
+                
+                logger.info(f"Importing data from {csv_file} to {schema}.{table_name}")
+                import_process = subprocess.run(import_cmd, env=env, capture_output=True, text=True)
+                
+                if import_process.returncode != 0:
+                    logger.error(f"Failed to import {csv_file}: {import_process.stderr}")
+                    success = False
+                    continue
+                
+                logger.info(f"Successfully imported data from {csv_file} to {schema}.{table_name}")
+                
+            except Exception as e:
+                logger.error(f"Error importing {csv_file}: {str(e)}")
+                success = False
+        
+        return success
